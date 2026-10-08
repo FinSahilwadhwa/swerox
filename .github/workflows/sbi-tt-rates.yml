@@ -1,0 +1,19 @@
+name: Archive SBI TT Rates
+
+on:
+  schedule:
+    - cron: "30 4 * * 1-6"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch SBI TT rates PDF
+        run: bash run.sh
