@@ -1,0 +1,95 @@
+name: Import Historical SBI TT Rates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone historical SBI archive
+        run: |
+          git clone --depth 1 https://github.com/skbly7/sbi-tt-rates-historical.git /tmp/sbi-history
+
+      - name: Import historical PDFs into SWEROX archive format
+        run: |
+          mkdir -p sbi-tt-rates
+
+          for file in /tmp/sbi-history/20*/*/*.pdf; do
+            name=$(basename "$file")
+            date_part=$(echo "$name" | sed -E 's/^([0-9]{4}-[0-9]{2}-[0-9]{2}).*\.pdf$/\1/')
+            year=$(echo "$date_part" | cut -d- -f1)
+            month=$(echo "$date_part" | cut -d- -f2)
+
+            mkdir -p "sbi-tt-rates/$year/$month"
+
+            if echo "$name" | grep -q "19:15"; then
+              cp "$file" "sbi-tt-rates/$year/$month/$date_part.pdf"
+            elif [ ! -f "sbi-tt-rates/$year/$month/$date_part.pdf" ]; then
+              cp "$file" "sbi-tt-rates/$year/$month/$date_part.pdf"
+            fi
+          done
+
+      - name: Move any old root year folders into archive root
+        run: |
+          shopt -s nullglob
+          for year_dir in 20*/; do
+            year="${year_dir%/}"
+            mkdir -p "sbi-tt-rates/$year"
+            cp -R "$year"/. "sbi-tt-rates/$year/"
+            rm -rf "$year"
+          done
+
+      - name: Commit imported history
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Import historical SBI TT rates"
+          file_pattern: "sbi-tt-rates/**/*.pdf 20*/**/*.pdf"
+
+      - name: Send Success Email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "SWEROX Historical SBI TT Rates Imported"
+          to: www.sahilwadhwa520@gmail.com
+          from: SWEROX Bot
+          body: |
+            Historical SBI TT rates import completed successfully.
+
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Archive folder: sbi-tt-rates/YYYY/MM/YYYY-MM-DD.pdf
+            Run ID: ${{ github.run_id }}
+
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send Failure Email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "SWEROX Historical SBI TT Rates Import Failed"
+          to: www.sahilwadhwa520@gmail.com
+          from: SWEROX Bot
+          body: |
+            Historical SBI TT rates import FAILED.
+
+            Repository: ${{ github.repository }}
+            Run ID: ${{ github.run_id }}
+
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
